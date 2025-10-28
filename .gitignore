@@ -1,0 +1,17 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Data, results and caches
+data/
+results/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment files
+.env
