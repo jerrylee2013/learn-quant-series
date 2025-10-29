@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import requests
 import pandas as pd
+import logging
 # no local datetime import required
 from typing import Optional
 
@@ -67,12 +68,13 @@ def download_and_cache(start: Optional[str] = None,
 
     if cached.empty:
         # fetch full range (limit covers ~2000 days)
+        logging.info("No cache found, fetching full range (limit=2000)")
         df = _fetch_cc(limit=2000)
     else:
         if not update:
             df = cached.copy()
         else:
-            # incremental update: only fetch the missing days after the last cached date
+            # incremental update: fetch missing days after the last cached date in batches
             last_date = pd.to_datetime(cached["datetime"].max())
             if last_date.tz is None:
                 last_date = last_date.tz_localize("UTC")
@@ -81,13 +83,40 @@ def download_and_cache(start: Optional[str] = None,
                 today = today.tz_localize("UTC")
             missing_days = (today.normalize() - last_date.normalize()).days
             if missing_days <= 0:
+                logging.info("Cache is up-to-date; no fetch needed")
                 df = cached.copy()
             else:
-                # cryptocompare supports up to ~2000 limit; request only missing_days (cap to 2000)
-                to_fetch = min(missing_days, 2000)
-                df_new = _fetch_cc(limit=to_fetch, to_ts=None)
+                logging.info(f"Need to fetch {missing_days} missing days since {last_date.date()}")
+                parts = []
+                fetched_total = 0
+                # iterate in batches up to 2000 days per request
+                while missing_days > 0:
+                    to_fetch = min(missing_days, 2000)
+                    # set to_ts to last_date + to_fetch days (inclusive)
+                    to_ts_date = (last_date + pd.Timedelta(days=to_fetch))
+                    to_ts = int(to_ts_date.tz_convert("UTC").timestamp()) if to_ts_date.tz is not None else int(to_ts_date.tz_localize("UTC").timestamp())
+                    logging.info(f"Fetching batch: last_date={last_date.date()} to to_ts={pd.to_datetime(to_ts, unit='s').date()} (limit={to_fetch})")
+                    df_batch = _fetch_cc(limit=to_fetch, to_ts=to_ts)
+                    logging.info(f"Batch returned {len(df_batch)} rows")
+                    if df_batch.empty:
+                        break
+                    parts.append(df_batch)
+                    fetched_total += len(df_batch)
+                    # advance last_date to max datetime in df_batch
+                    last_date = pd.to_datetime(df_batch["datetime"].max())
+                    if last_date.tz is None:
+                        last_date = last_date.tz_localize("UTC")
+                    missing_days = (today.normalize() - last_date.normalize()).days
+                    # safety: avoid infinite loop
+                    if len(parts) > 50:
+                        logging.warning("Too many batches, stopping to avoid infinite loop")
+                        break
+                if parts:
+                    df_new = pd.concat(parts, ignore_index=True)
+                else:
+                    df_new = pd.DataFrame()
                 # combine and dedupe (keep earliest occurrences)
-                df = pd.concat([cached, df_new], ignore_index=True)
+                df = pd.concat([cached, df_new], ignore_index=True) if not df_new.empty else cached.copy()
                 df = df.drop_duplicates(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
 
     # filter by start/end
