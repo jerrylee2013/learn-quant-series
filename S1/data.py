@@ -72,11 +72,23 @@ def download_and_cache(start: Optional[str] = None,
         if not update:
             df = cached.copy()
         else:
-            # fetch latest full range and merge (we keep simple approach: fetch recent window and dedupe)
-            df_new = _fetch_cc(limit=2000, to_ts=None)
-            # combine and dedupe
-            df = pd.concat([cached, df_new], ignore_index=True)
-            df = df.drop_duplicates(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
+            # incremental update: only fetch the missing days after the last cached date
+            last_date = pd.to_datetime(cached["datetime"].max())
+            if last_date.tz is None:
+                last_date = last_date.tz_localize("UTC")
+            today = pd.Timestamp.utcnow()
+            if today.tz is None:
+                today = today.tz_localize("UTC")
+            missing_days = (today.normalize() - last_date.normalize()).days
+            if missing_days <= 0:
+                df = cached.copy()
+            else:
+                # cryptocompare supports up to ~2000 limit; request only missing_days (cap to 2000)
+                to_fetch = min(missing_days, 2000)
+                df_new = _fetch_cc(limit=to_fetch, to_ts=None)
+                # combine and dedupe (keep earliest occurrences)
+                df = pd.concat([cached, df_new], ignore_index=True)
+                df = df.drop_duplicates(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
 
     # filter by start/end
     if start:
