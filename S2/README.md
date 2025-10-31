@@ -1,41 +1,7 @@
-这是本系列的第二篇文章，响应我的twitter博文https://x.com/Jerrylee778899/status/1983721492484649154
-在这篇博文中，我给出了S1在2020-05-07到2025-10-28期间的回测结果，具体结果如下：
-
-# MA 交叉（results/s1/ma_crossover/metrics.json）
-total_return（累计收益）：+359.7% （3.5967）
-annualized_return（年化）：32.10% （0.3210）
-max_drawdown（最大回撤）：-63.07% （-0.6307）
-volatility（年化波动）：34.66% （0.3466）
-sharpe（夏普）：0.727
-
-# RSI（results/s1/rsi/metrics.json）
-total_return：+64.97% （0.6497）
-annualized_return：9.57% （0.0957）
-max_drawdown：-68.36% （-0.6836）
-volatility：33.94% （0.3394）
-sharpe：0.356
-
-# MACD（results/s1/macd/metrics.json）
-total_return：+418.13% （4.1813）
-annualized_return：35.02% （0.3502）
-max_drawdown：-52.40% （-0.5240）
-volatility：33.46% （0.3346）
-sharpe：0.785
-
-为了改善这些策略年化收益和最大回撤，Grok针对S1系列的交易策略改进提出了如下建议：
-
-# 通用改进
-1. 增加止损/止盈（Stop-Loss/Take-Profit）：固定5-10%止损，避免大亏；20-30%止盈锁定利润。预期年化微降但回撤减半。
-2. 引入仓位管理：用Kelly公式动态调整仓位（f = (p* (b+1) -1)/b，其中p=胜率，b=赔率）。简单版：胜率>50%时仓位1.5倍。
-3. 趋势过滤：只在BTC>200日MA时交易（牛市过滤），避开熊市信号。预计回撤降20%。
-
-# 策略级改进
-## MA交叉策略
 这是本系列的第二篇记录，来源于 twitter（https://x.com/Jerrylee778899/status/1983721492484649154）。
 
-本文回顾了 S1 的回测结果（时间区间：2020-05-07 — 2025-10-28），并列出 Grok 给出的改进建议。S2 的目标是把这些建议逐条实现并验证效果。
 
-## S1 回测摘要（关键指标）
+# S1 回测摘要（关键指标）（时间区间：2020-05-07 — 2025-10-28）
 
 | 策略 | total_return | annualized_return | max_drawdown | volatility | sharpe |
 |---|---:|---:|---:|---:|---:|
@@ -44,6 +10,10 @@ sharpe：0.785
 | MACD (results/s1/macd/) | +418.13% (4.1813) | 35.02% (0.3502) | -52.40% (-0.5240) | 33.46% (0.3346) | 0.785 |
 
 > 注：上述指标来自 `results/s1/<strategy>/metrics.json`。
+
+
+
+# S2 — 策略改进计划（止损 / 止盈 等）
 
 ## 改进目标（总体方向）
 
