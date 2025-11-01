@@ -3,6 +3,7 @@ import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from typing import Optional
 
 
 def _calc_metrics(equity_series: pd.Series) -> dict:
@@ -35,7 +36,10 @@ def run_backtest_sl_tp(df: pd.DataFrame,
                        fee: float = 0.001,
                        sl_pct: float = 0.05,
                        tp_pct: float = 0.2,
-                       skip_reindex: bool = False) -> dict:
+                       skip_reindex: bool = False,
+                       start: Optional[str] = None,
+                       end: Optional[str] = None,
+                       kline: str = "1d") -> dict:
     """A simple daily backtester that supports stop-loss and take-profit.
 
     Assumptions / simplifications:
@@ -174,6 +178,16 @@ def run_backtest_sl_tp(df: pd.DataFrame,
     equity_df = pd.DataFrame(equity_records).set_index("datetime")["equity"]
 
     metrics = _calc_metrics(equity_df)
+    # attach metadata
+    try:
+        start_used = equity_df.index[0].isoformat()
+        end_used = equity_df.index[-1].isoformat()
+    except Exception:
+        start_used = start
+        end_used = end
+    metrics["start"] = start_used
+    metrics["end"] = end_used
+    metrics["kline"] = kline
 
     # write outputs
     equity_df.to_csv(os.path.join(out_dir, "equity.csv"), index_label="datetime")

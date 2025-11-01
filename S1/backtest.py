@@ -43,6 +43,7 @@ def run_backtest(df: pd.DataFrame,
                  out_dir: str,
                  start: Optional[str] = None,
                  end: Optional[str] = None,
+                 kline: str = "1d",
                  init_cash: float = 10000.0,
                  fee: float = 0.001) -> Dict:
     """按 signals 回测。signals 应与 df 对齐，取值为 1（持仓）或 0（空仓）。
@@ -99,6 +100,16 @@ def run_backtest(df: pd.DataFrame,
     eq_df.index = pd.to_datetime(eq_df.index)
 
     metrics = _metrics(eq_df["equity"])
+    # attach metadata: actual backtest window and kline
+    try:
+        start_used = eq_df.index[0].isoformat()
+        end_used = eq_df.index[-1].isoformat()
+    except Exception:
+        start_used = start
+        end_used = end
+    metrics["start"] = start_used
+    metrics["end"] = end_used
+    metrics["kline"] = kline
 
     # save outputs
     eq_df.to_csv(os.path.join(out_dir, "equity.csv"))
