@@ -62,3 +62,21 @@ python3 S1/run_all.py --start 2021-01-01 --end 2021-12-31
 
 回测结果将保存在 `results/s1/<strategy>/` 中。
 
+
+## 进度记录
+
+### S1 基础策略实现与回测
+博文地址： 
+https://x.com/Jerrylee778899/status/1982812330317537293
+
+https://x.com/Jerrylee778899/status/1983524942512787775
+
+### S2 对S1做改进
+### 加入了止损/止盈（SL/TP）的功能
+博文地址：
+https://x.com/Jerrylee778899/status/1984237614287950041
+
+### 止盈止损参数网格搜索，寻找合适的止盈止损参数配置
+博文地址
+https://x.com/Jerrylee778899/status/1984516111589650527
+
