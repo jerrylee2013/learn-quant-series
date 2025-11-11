@@ -106,3 +106,4 @@ pip install -r requirements.txt
 ### 系列三 仓位管理对策略的影响
 1. 本系列介绍在 S1 引入仓位管理机制以提升策略的风险调整后收益表现。
 2. 基于 Kelly 公式的仓位管理网格搜索与分析
+	- 网格分析与可视化报告（包含 summary.csv 与代表性图片）：`docs/s3/ma_crossover_kelly_grid.md`
