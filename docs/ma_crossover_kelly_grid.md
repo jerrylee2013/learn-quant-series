@@ -10,6 +10,22 @@
 
 ![Total return vs kelly_max_alloc](./return_vs_alloc.png)
 
+## 示例净值曲线（代表性格点）
+
+下面是几个在网格中具有代表性的格点的净值曲线示例（图片已复制到 `docs/`）：
+
+### 稳健配置 — run_04 (frac=0.25, max_alloc=0.25)
+![Equity run 04](./equity_run04.png)
+
+### 激进配置 — run_10 (frac=0.5, max_alloc=0.5)
+![Equity run 10](./equity_run10.png)
+
+### 中性配置 — run_14 (frac=1.0, max_alloc=0.25)
+![Equity run 14](./equity_run14.png)
+
+### 极保守配置 — run_01 (frac=0.25, max_alloc=0.01)
+![Equity run 01](./equity_run01.png)
+
 下面是从 summary.csv 提取的关键行（网格共 15 个格点）：
 
 | run | frac | kelly_max_alloc | total_return | annualized_return | max_drawdown | volatility | sharpe | final_equity |
