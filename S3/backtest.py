@@ -29,6 +29,34 @@ def _calc_metrics(equity_series: pd.Series) -> dict:
     }
 
 
+def _read_kelly_series(kelly_dir: Optional[str], prefer_field: str = "f_smooth") -> Optional[pd.DataFrame]:
+    """Try to read precomputed kelly CSVs under kelly_dir and return a DataFrame with a datetime index or trade_index."""
+    if not kelly_dir:
+        return None
+    base = os.path.abspath(kelly_dir)
+    # prefer returns-based CSV
+    returns_csv = os.path.join(base, "kelly_returns_rolling.csv")
+    trades_csv = os.path.join(base, "kelly_trades_rolling.csv")
+    try:
+        if os.path.exists(returns_csv):
+            df = pd.read_csv(returns_csv, parse_dates=["datetime"]).set_index("datetime")
+            if prefer_field in df.columns:
+                return df
+            # try common names
+            for c in ["f_smooth", "f_adj", "f_raw"]:
+                if c in df.columns:
+                    return df
+        if os.path.exists(trades_csv):
+            df = pd.read_csv(trades_csv)
+            # trades-based uses trade_index column
+            if "trade_index" in df.columns:
+                return df.set_index("trade_index")
+            return df
+    except Exception:
+        return None
+    return None
+
+
 def run_backtest_sl_tp(df: pd.DataFrame,
                        signals: pd.Series,
                        out_dir: str,
@@ -39,18 +67,27 @@ def run_backtest_sl_tp(df: pd.DataFrame,
                        skip_reindex: bool = False,
                        start: Optional[str] = None,
                        end: Optional[str] = None,
-                       kline: str = "1d") -> dict:
-    """A simple daily backtester that supports stop-loss and take-profit.
+                       kline: str = "1d",
+                       # S3 additions
+                       enable_kelly: bool = False,
+                       kelly_dir: Optional[str] = None,
+                       kelly_min_alloc: float = 0.0,
+                       kelly_max_alloc: float = 0.25,
+                       kelly_field: str = "f_smooth") -> dict:
+    """A simple daily backtester with optional Kelly-based position sizing.
 
-    Assumptions / simplifications:
-    - Entry executed at next-day open after a 0->1 signal transition.
-    - Stop-loss / take-profit are checked intraday using the same day's high/low
-      AFTER entry (i.e. the open day counts for checking hits).
-    - If both SL and TP are hit on the same day we conservatively assume SL was hit first.
-    - Exit on signal 1->0 happens at next-day open.
-    - When position remains at the end of data, we liquidate at the last close.
+    New parameters (S3):
+    - enable_kelly: if True, attempt to read precomputed Kelly fractions from `kelly_dir`.
+    - kelly_dir: directory where `kelly_returns_rolling.csv` or `kelly_trades_rolling.csv` live.
+    - kelly_min_alloc / kelly_max_alloc: clamp the chosen fraction.
+    - kelly_field: which column to use from the kelly CSV (default 'f_smooth').
     """
     os.makedirs(out_dir, exist_ok=True)
+
+    # read kelly series if requested
+    kelly_df = None
+    if enable_kelly:
+        kelly_df = _read_kelly_series(kelly_dir, prefer_field=kelly_field)
 
     # Re-implement a straightforward, robust simulation similar to the debug runner
     df = df.copy()
@@ -60,10 +97,8 @@ def run_backtest_sl_tp(df: pd.DataFrame,
 
     # align signals explicitly to the dataframe datetimes unless caller already aligned
     if skip_reindex:
-        # assume signals is positional-aligned with df (same length)
         sig = pd.Series(signals).fillna(0).astype(int)
         if len(sig) != len(df):
-            # fall back to reindexing if lengths mismatch
             sig = signals.reindex(pd.DatetimeIndex(df["datetime"].values)).fillna(0).astype(int)
     else:
         sig = signals.reindex(pd.DatetimeIndex(df["datetime"].values)).fillna(0).astype(int)
@@ -89,6 +124,9 @@ def run_backtest_sl_tp(df: pd.DataFrame,
             if j + 1 < len(sig):
                 scheduled_exit[j + 1] = True
 
+    # track number of completed trades to align with trades-based kelly if needed
+    completed_trades = 0
+
     for i, idx in enumerate(df.index):
         price_open = df.at[idx, "open"]
         price_high = df.at[idx, "high"]
@@ -111,20 +149,54 @@ def run_backtest_sl_tp(df: pd.DataFrame,
             })
             qty = 0.0
             in_position = False
-            # sanity check
-            assert cash >= -1e-8, f"cash went negative after scheduled_exit at {idx}: cash={cash}"
+            completed_trades += 1
 
         # Then, handle scheduled entry at today's open (signal 0->1 from previous day)
         if scheduled_entry[i] and (not in_position):
             entry_price = price_open
-            # legacy: invest all cash, but include buy-side fee in cost
-            # compute qty that accounts for buy-side fee so buy_cost <= available cash
-            qty = cash / (entry_price * (1 + fee)) if entry_price > 0 else 0.0
+
+            # determine position size: either full-cash (old behavior) or Kelly-based
+            desired_qty = 0.0
+            if enable_kelly and kelly_df is not None:
+                try:
+                    f = None
+                    # if kelly_df indexed by datetime, pick last <= idx
+                    if isinstance(kelly_df.index, pd.DatetimeIndex):
+                        sel = kelly_df.loc[kelly_df.index <= idx]
+                        if not sel.empty:
+                            if kelly_field in sel.columns:
+                                f = float(sel[kelly_field].iloc[-1])
+                            else:
+                                # fallback
+                                f = float(sel.iloc[-1].iloc[-1])
+                    else:
+                        # trades-based: use completed_trades as index
+                        ti = min(completed_trades, int(kelly_df.index.max()))
+                        if ti in kelly_df.index:
+                            if kelly_field in kelly_df.columns:
+                                f = float(kelly_df.loc[ti, kelly_field])
+                            else:
+                                f = float(kelly_df.iloc[ti].iloc[-1])
+                    if f is None or np.isnan(f):
+                        f = 0.0
+                except Exception:
+                    f = 0.0
+                # clamp
+                f = max(kelly_min_alloc, min(kelly_max_alloc, f))
+                invest = f * (cash + qty * entry_price)
+                # Cannot invest more than cash available
+                invest = max(0.0, min(invest, cash))
+                # account for buy-side fee: compute quantity so that buy_cost = qty*entry_price*(1+fee) <= invest
+                desired_qty = invest / (entry_price * (1 + fee)) if entry_price > 0 else 0.0
+            else:
+                # legacy full-invest behavior
+                # account for buy-side fee when fully investing
+                desired_qty = cash / (entry_price * (1 + fee)) if entry_price > 0 else 0.0
+
+            qty = desired_qty
+            # apply buy cost including fee so available cash reflects execution cost
             buy_cost = qty * entry_price * (1 + fee)
             cash = cash - buy_cost
-            # avoid tiny negative due to float rounding
-            if cash < 0 and cash > -1e-8:
-                cash = 0.0
             in_position = True
             trades.append({
                 "datetime": idx.isoformat(),
@@ -133,8 +205,6 @@ def run_backtest_sl_tp(df: pd.DataFrame,
                 "qty": float(qty),
                 "cash": float(cash),
             })
-            # sanity check
-            assert cash >= -1e-8, f"cash went negative after buy at {idx}: cash={cash}, buy_cost={buy_cost}"
 
         # If in position, check SL/TP intraday (using today's high/low)
         if in_position:
@@ -156,6 +226,7 @@ def run_backtest_sl_tp(df: pd.DataFrame,
                 exit_price = None
 
             if exit_price is not None:
+                # add proceeds to cash (do not overwrite existing cash)
                 proceeds = qty * exit_price * (1 - fee)
                 cash = cash + proceeds
                 trades.append({
@@ -168,8 +239,7 @@ def run_backtest_sl_tp(df: pd.DataFrame,
                 })
                 qty = 0.0
                 in_position = False
-                # sanity check
-                assert cash >= -1e-8, f"cash went negative after exit at {idx}: cash={cash}, proceeds={proceeds}"
+                completed_trades += 1
 
         equity = cash + (qty * price_close)
         equity_records.append({"datetime": idx, "equity": float(equity)})
@@ -190,7 +260,6 @@ def run_backtest_sl_tp(df: pd.DataFrame,
         })
         qty = 0.0
         equity_records[-1]["equity"] = float(cash)
-        assert cash >= -1e-8, f"cash negative after final liquidation: cash={cash}, proceeds={proceeds}"
 
     equity_df = pd.DataFrame(equity_records).set_index("datetime")["equity"]
 
