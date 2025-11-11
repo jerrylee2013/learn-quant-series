@@ -8,6 +8,8 @@
 - 对比图（Total return vs kelly_max_alloc）：results/s3/ma_crossover_compare/grid/return_vs_alloc.png
 - 各格点回测子目录：results/s3/ma_crossover_compare/grid/run_XX_f{frac}_max{max_alloc}/（每个子目录包含 equity.csv、metrics.json、trades.csv）
 
+![Total return vs kelly_max_alloc](./return_vs_alloc.png)
+
 下面是从 summary.csv 提取的关键行（网格共 15 个格点）：
 
 | run | frac | kelly_max_alloc | total_return | annualized_return | max_drawdown | volatility | sharpe | final_equity |
