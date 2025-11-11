@@ -56,6 +56,8 @@ pip install -r requirements.txt
 #### 简介
 该系列实现了三种基础量化交易策略（MA 交叉、RSI、MACD），并基于 Cryptocompare 的 BTC 日线数据进行了回测。
 
+更多细节与代码参见：`S1/README.md`
+
 #### 回测成果
 这里列出系列一中3个策略的回测摘要（关键指标）（时间区间：2020-05-07 — 2025-10-28）
 
@@ -103,7 +105,11 @@ pip install -r requirements.txt
 1. 加入了止损/止盈（SL/TP）的功能
 2. 止盈止损参数网格搜索，寻找合适的止盈止损参数配置
 
+更多细节与代码参见：`S2/README.md`
+
 ### 系列三 仓位管理对策略的影响
 1. 本系列介绍在 S1 引入仓位管理机制以提升策略的风险调整后收益表现。
 2. 基于 Kelly 公式的仓位管理网格搜索与分析
+
+更多细节与可视化报告参见：`S3/README.md` 或 `docs/s3/ma_crossover_kelly_grid.md`
 	- 网格分析与可视化报告（包含 summary.csv 与代表性图片）：`docs/s3/ma_crossover_kelly_grid.md`
